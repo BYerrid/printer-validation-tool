@@ -1,0 +1,16 @@
+{
+  "name": "Printer Validation Tool",
+  "short_name": "Printer Val.",
+  "description": "Mobile field tool for walking buildings and validating printer inventory.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#14161a",
+  "theme_color": "#145385",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,9 @@
+# Never commit real spreadsheet data - it contains internal IPs, MACs, serials, room numbers
+/spreadsheet-review/
+*.xlsx
+*.xls
+*.csv
+
+node_modules/
+.DS_Store
+Thumbs.db
