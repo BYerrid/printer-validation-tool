@@ -14,6 +14,9 @@
   --tier2: #b8860b;
   --tier3: #6b7280;
   --tiernew: #7e57c2;
+  --ok-wash: #e6f4ea;
+  --amber-wash: #fdf3d9;
+  --red-wash: #fbe4e4;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -31,6 +34,9 @@
     --amber: #ffca57;
     --red: #ef5350;
     --grey: #8a8f98;
+    --ok-wash: rgba(102, 187, 106, 0.16);
+    --amber-wash: rgba(255, 202, 87, 0.16);
+    --red-wash: rgba(239, 83, 80, 0.16);
   }
 }
 
@@ -203,16 +209,34 @@ a { color: inherit; text-decoration: none; }
   border-radius: 12px;
   padding: 12px 14px;
   min-height: 44px;
+  transition: background 0.15s ease;
 }
+/* Persistent "already handled" treatment - a tinted row is a much stronger
+   at-a-glance signal than the small status dot alone once a list gets long. */
+.printer-row--green { background: var(--ok-wash); border-color: var(--ok); }
+.printer-row--amber { background: var(--amber-wash); border-color: var(--amber); }
+.printer-row--red { background: var(--red-wash); border-color: var(--red); }
+
 .printer-row-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+/* IP is the field actually needed on a walk - it's the fixed, always-fully-
+   visible primary line. Name/model is the muted line underneath and is
+   what truncates if anything has to. */
 .printer-row-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.printer-row-ip { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.01em; }
 .printer-row-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .status-dot {
-  width: 12px;
-  height: 12px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1;
 }
 .st-green { background: var(--ok); }
 .st-amber { background: var(--amber); }
@@ -306,6 +330,37 @@ textarea { min-height: 80px; resize: vertical; }
 .lead-row:first-of-type { border-top: none; }
 .lead-key { color: var(--muted); flex-shrink: 0; }
 .lead-val { text-align: right; word-break: break-word; }
+/* IP/MAC is the highest-priority lead in the field - make it visually pop. */
+.lead-row-primary .lead-key { color: var(--text); font-weight: 600; }
+.lead-row-primary .lead-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+/* Toast (immediate save confirmation) */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(70px + var(--safe-bottom));
+  transform: translateX(-50%) translateY(6px);
+  background: var(--text);
+  color: var(--bg);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 50;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast-green { background: var(--ok); color: #fff; }
+.toast-amber { background: var(--amber); color: #1a1d21; }
+.toast-red { background: var(--red); color: #fff; }
 
 /* Import screen */
 .import-screen {

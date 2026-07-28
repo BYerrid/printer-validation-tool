@@ -22,12 +22,28 @@ function todayISO() {
 
 function statusOf(rec) {
   const f = rec.field;
-  if (f.physicallyLocated === "Cannot Locate") return { cls: "st-red", label: "Cannot locate" };
-  if (f.physicallyLocated === "No") return { cls: "st-red", label: "Not located" };
-  if (f.physicallyLocated === "Yes" && f.businessNeedValidated) return { cls: "st-green", label: "Validated" };
-  if (f.physicallyLocated === "Yes") return { cls: "st-amber", label: "Located" };
-  if (isTouched(f)) return { cls: "st-amber", label: "In progress" };
-  return { cls: "st-grey", label: "Not checked" };
+  if (f.physicallyLocated === "Cannot Locate") return { cls: "st-red", label: "Cannot locate", mark: "✕", tint: "red" };
+  if (f.physicallyLocated === "No") return { cls: "st-red", label: "Not located", mark: "✕", tint: "red" };
+  if (f.physicallyLocated === "Yes" && f.businessNeedValidated) return { cls: "st-green", label: "Validated", mark: "✓", tint: "green" };
+  if (f.physicallyLocated === "Yes") return { cls: "st-amber", label: "Located", mark: "✓", tint: "amber" };
+  if (isTouched(f)) return { cls: "st-amber", label: "In progress", mark: "", tint: "amber" };
+  return { cls: "st-grey", label: "Not checked", mark: "", tint: "" };
+}
+
+// Small fixed toast for immediate save confirmation. Lives on document.body
+// (a sibling of #app) rather than inside root.innerHTML, so it survives the
+// full re-render that happens when saveDetail() navigates back to the list.
+function showToast(message, tint) {
+  let el = document.getElementById("toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast";
+    document.body.appendChild(el);
+  }
+  el.textContent = message;
+  el.className = `toast show ${tint ? `toast-${tint}` : ""}`;
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => el.classList.remove("show"), 1800);
 }
 
 function displayName(rec) {
@@ -153,12 +169,12 @@ async function onImportFile(e) {
   if (!file) return;
   root.innerHTML = `<div class="screen"><p class="loading">Parsing ${escapeHtml(file.name)}&hellip;</p></div>`;
   try {
-    const { records, workbookB64, sheetName, fileName } = await parseWorkbookFile(file);
+    const { records, workbookB64, sheetName, fileName, headers } = await parseWorkbookFile(file);
     const existing = storage.hasData() ? storage.loadRecords() : [];
     const merged = existing.length ? mergeRecords(existing, records) : records;
     storage.saveWorkbookB64(workbookB64);
     storage.saveRecords(merged);
-    storage.saveMeta({ importedAt: new Date().toISOString(), sheetName, fileName, rowCount: merged.length });
+    storage.saveMeta({ importedAt: new Date().toISOString(), sheetName, fileName, rowCount: merged.length, headers });
     navigate("/");
     render();
   } catch (err) {
@@ -280,13 +296,20 @@ function renderPrinterList(building, floor) {
 function printerRowHtml(r) {
   const st = statusOf(r);
   const name = displayName(r);
-  const sub = [r.ref.model, r.ref.ip].filter(Boolean).map(escapeHtml).join(" &middot; ");
+  // IP is what techs actually need on a walk (it's what ties back to the
+  // rest of the inventory via asset tag); it must never be the thing that
+  // gets truncated. So it's the fixed-width primary line and the
+  // name/model - which vary wildly in length - are the part that wraps to
+  // the muted sub-line and truncates if it must.
+  const ip = r.ref.ip || "";
+  const sub = [name, r.ref.model].filter(Boolean).map(escapeHtml).join(" &middot; ");
+  const rowTint = st.tint ? ` printer-row--${st.tint}` : "";
   return `
-    <a class="printer-row" href="#/printer/${encodeURIComponent(r.id)}">
-      <span class="status-dot ${st.cls}" title="${st.label}"></span>
+    <a class="printer-row${rowTint}" href="#/printer/${encodeURIComponent(r.id)}">
+      <span class="status-dot ${st.cls}" title="${st.label}">${st.mark}</span>
       <span class="printer-row-main">
-        <span class="printer-row-name">${escapeHtml(name)}</span>
-        <span class="printer-row-sub muted small">${sub}</span>
+        <span class="printer-row-name${ip ? " printer-row-ip" : ""}">${ip ? escapeHtml(ip) : escapeHtml(name)}</span>
+        ${ip ? `<span class="printer-row-sub muted small">${sub}</span>` : ""}
       </span>
       <span class="tier-chip ${tierClass(r.ref.tier)}">${escapeHtml(tierLabel(r.ref.tier))}</span>
     </a>
@@ -305,20 +328,31 @@ function renderDetail(id) {
   const ref = rec.ref;
   const f = rec.field;
 
+  // Use the tracker's actual header text where we have it (it carries the
+  // scan date, e.g. "Found in 7/10/26 Scan", "ARP Scan 7/2026") so it's
+  // obvious in the field whether a lead is from the latest walk-through or
+  // a stale one - without hardcoding a date that goes wrong on next import.
+  const hdr = state.meta?.headers || {};
+  const label = (key, fallback) => hdr[key] || fallback;
+
   const leadRows = [
-    ["Tier / Sub-tier", `${tierLabel(ref.tier)} &mdash; ${escapeHtml(ref.subTier)}`],
-    ["Queue location", escapeHtml(ref.queueLocation)],
-    ["Scan location", escapeHtml(ref.scanLocation)],
-    ["ARP building / detail", [ref.arpBldg, ref.arpLocationDetail].filter(Boolean).map(escapeHtml).join(" &middot; ")],
-    ["Tyrone building", escapeHtml(ref.tyroneBldg)],
-    ["Model / Serial", [ref.model, ref.serial].filter(Boolean).map(escapeHtml).join(" &middot; ")],
-    ["IP / MAC", [ref.ip, ref.mac].filter(Boolean).map(escapeHtml).join(" &middot; ")],
-    ["Lifetime pages", escapeHtml(ref.lifetimePages)],
-    ["Console message", escapeHtml(ref.consoleMsg)],
+    ["Tier / Sub-tier", `${tierLabel(ref.tier)} &mdash; ${escapeHtml(ref.subTier)}`, false],
+    // IP/MAC first and visually emphasized - this is the field that's
+    // actually needed on a walk (asset tag ties everything else to it).
+    ["IP / MAC", [ref.ip, ref.mac].filter(Boolean).map(escapeHtml).join(" &middot; "), true],
+    ["Model / Serial", [ref.model, ref.serial].filter(Boolean).map(escapeHtml).join(" &middot; "), false],
+    [label("queueLocation", "Queue location"), escapeHtml(ref.queueLocation), false],
+    [label("scanLocation", "Scan location"), escapeHtml(ref.scanLocation), false],
+    [label("foundInScan", "Found in scan"), escapeHtml(ref.foundInScan), false],
+    ["ARP building / detail", [ref.arpBldg, ref.arpLocationDetail].filter(Boolean).map(escapeHtml).join(" &middot; "), false],
+    [label("arpScan", "ARP scan"), escapeHtml(ref.arpScan), false],
+    ["Tyrone building", escapeHtml(ref.tyroneBldg), false],
+    ["Lifetime pages", escapeHtml(ref.lifetimePages), false],
+    [label("consoleMsg", "Console message"), escapeHtml(ref.consoleMsg), false],
   ].filter(([, v]) => v && v !== "");
 
-  const leadsHtml = leadRows.map(([k, v]) => `
-    <div class="lead-row"><span class="lead-key">${k}</span><span class="lead-val">${v}</span></div>
+  const leadsHtml = leadRows.map(([k, v, emphasize]) => `
+    <div class="lead-row${emphasize ? " lead-row-primary" : ""}"><span class="lead-key">${k}</span><span class="lead-val">${v}</span></div>
   `).join("");
 
   root.innerHTML = `
@@ -431,6 +465,8 @@ function saveDetail(rec, formData) {
   }
   rec.computed = inferLocation(rec.ref, rec.field);
   persistRecords();
+  const st = statusOf(rec);
+  showToast(`Saved — ${st.label}`, st.tint);
   history.back();
 }
 

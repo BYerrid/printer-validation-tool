@@ -37,6 +37,17 @@ export async function parseWorkbookFile(file) {
   const ws = wb.Sheets[sheetName];
   const range = XLSX.utils.decode_range(ws["!ref"]);
 
+  // Actual header text for each mapped column, e.g. "Found in 7/10/26 Scan"
+  // or "ARP Scan 7/2026" - these dates are baked into the tracker's own
+  // header row and change every time a fresh scan is merged in. Capturing
+  // them here (instead of hardcoding generic labels) lets the UI always
+  // show which dated scan/source a given lead came from without needing a
+  // code change on every re-import.
+  const headers = {};
+  for (const [key, col] of Object.entries(COLS)) {
+    headers[key] = cell(ws, HEADER_ROW, col) || "";
+  }
+
   const records = [];
   for (let r = HEADER_ROW + 1; r <= range.e.r + 1; r++) {
     const rowHasData = Object.values(COLS).some((c) => cell(ws, r, c) !== "");
@@ -87,7 +98,7 @@ export async function parseWorkbookFile(file) {
   }
 
   const workbookB64 = arrayBufferToBase64(buf);
-  return { records, workbookB64, sheetName, fileName: file.name };
+  return { records, workbookB64, sheetName, fileName: file.name, headers };
 }
 
 // Merge a freshly-imported set of records into existing ones: reference data
