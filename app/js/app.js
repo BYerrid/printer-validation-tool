@@ -272,21 +272,50 @@ function renderFloors(building) {
 
 // ---------- screen: printer list for building+floor ----------
 
+// Dotted-quad -> comparable integer, or null if missing/malformed (those
+// sort to the bottom rather than interrupting the numeric order).
+function ipToComparable(ip) {
+  if (!ip) return null;
+  const parts = String(ip).trim().split(".").map(Number);
+  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) return null;
+  return parts[0] * 256 ** 3 + parts[1] * 256 ** 2 + parts[2] * 256 + parts[3];
+}
+
+function compareByIp(a, b) {
+  const ai = ipToComparable(a.ref.ip);
+  const bi = ipToComparable(b.ref.ip);
+  if (ai === null && bi === null) return displayName(a).localeCompare(displayName(b));
+  if (ai === null) return 1;
+  if (bi === null) return -1;
+  return ai - bi;
+}
+
 function renderPrinterList(building, floor) {
   const recs = state.records
-    .filter((r) => (r.computed.building || "Unassigned") === building && (r.computed.floor || "?") === floor)
-    .sort((a, b) => displayName(a).localeCompare(displayName(b)));
+    .filter((r) => (r.computed.building || "Unassigned") === building && (r.computed.floor || "?") === floor);
+
+  // Not-found first (this is what a tech walking the floor needs to see
+  // first), found after — each bucket sorted numerically by IP.
+  const notFound = recs.filter((r) => r.field.physicallyLocated !== "Yes").sort(compareByIp);
+  const found = recs.filter((r) => r.field.physicallyLocated === "Yes").sort(compareByIp);
 
   const backHref = `#/building/${encodeURIComponent(building)}`;
   const label = floor === "?" ? "Unknown floor" : `Floor ${floor}`;
 
-  const rows = recs.map((r) => printerRowHtml(r)).join("") || `<p class="muted">No printers in this group.</p>`;
+  const groupHtml = (title, group) => `
+    <h2 class="section-title">${title} (${group.length})</h2>
+    <div class="printer-list">${group.map((r) => printerRowHtml(r)).join("") || '<p class="muted small">None.</p>'}</div>
+  `;
+
+  const content = recs.length
+    ? groupHtml("Not Found", notFound) + groupHtml("Found", found)
+    : `<p class="muted">No printers in this group.</p>`;
 
   root.innerHTML = `
     <div class="screen">
       ${renderTopBar(`${building} &middot; ${label}`, false, backHref)}
       <div class="content">
-        <div class="printer-list">${rows}</div>
+        ${content}
       </div>
       ${renderBottomNav()}
     </div>
